@@ -10,13 +10,23 @@ import http from 'http';
 
 
 //importing custom modules
-import ConfigManager from './bootloader/ConfigManager/ConfigManager';
+import ConfigManager from './bootloader/configManager/ConfigManager';
+import Bootstrap from './conf/Bootstrap';
+import Logger from './bootloader/Logger';
+import StatelessMiddleware from './bootloader/security/StatelessMiddleware';
 
 class Main {
 
     constructor(callback) {
         this.appBaseDir = __dirname;
         this.appEnv = process.env.NODE_ENV || 'development';
+        this.frameworkEvents = new EventEmitter();
+        this.addSafeReadOnlyGlobal('_frameworkEvents', this.frameworkEvents);
+
+        // Notify of env
+        console.log('[FRAMEWORK]'.bold.yellow, `Initialising Class '${this.constructor.name.bold}' using environment '${this.appEnv.bold}'.`.green);
+
+        // Run bootloader tasks
         series([
             this.initializeExpressApp.bind(this),
             this.initializeConfig.bind(this),
@@ -25,13 +35,13 @@ class Main {
             this.initializeModels.bind(this),
             this.loadServices.bind(this),
             this.initialiseSecurity.bind(this),
-            this.initPreRoutes.bind(this),
+            // this.initPreRoutes.bind(this),
             this.initialiseRoutes.bind(this),
-            this.bootstrapApp.bind(this),
-            this.initEventHooks.bind(this),
-            this.initJobSchedulers.bind(this),
+            // this.bootstrapApp.bind(this),
+            // this.initEventHooks.bind(this),
+            // this.initJobSchedulers.bind(this),
             this.startServer.bind(this),
-            this.sendOnlineEvent.bind(this)
+            // this.sendOnlineEvent.bind(this)
         ], callback);
 
     }
@@ -90,7 +100,49 @@ class Main {
         callback();
     }
 
+    // Start server
+    startServer(callback) {
+        // catch 404 and forward to error handler
+        this.app.use(function (req, res, next) {
+            let err = new Error('Not Found');
+            err.status = 404;
+            next(err);
+        });
 
+        // error handler
+        this.app.use(function (err, req, res, next) {
+            // set locals, only providing error in development
+            res.locals.message = err.message;
+            res.locals.error = req.app.get('env') === 'development' ? err : {};
+            // render the error page
+            res.status(err.status || 500);
+            res.render('error');
+        });
+        let server = http.createServer(this.app);
+        server.listen(this.config.port);
+        server.on('listening', () => {
+            let addr = server.address();
+            let bind = typeof addr === 'string'
+                ? 'pipe ' + addr
+                : 'port ' + addr.port;
+            log.debug('Listening on ' + bind);
+            this.frameworkEvents.emit('SERVER_STARTED');
+        });
+        callback();
+    }
+
+    // Initialize exports
+    initialiseExportedVars(callback) {
+        this.addSafeReadOnlyGlobal('_config', this.config);
+        this.addSafeReadOnlyGlobal('_appEnv', this.appEnv);
+        //Add noop function in global context
+        this.addSafeReadOnlyGlobal('noop', function () {
+            log.info('Noop Executed with params:', arguments);
+        });
+        //set the base dir of project in global, This is done to maintain the correct base in case of forked processes.
+        this.addSafeReadOnlyGlobal('_appBaseDir', this.appBaseDir);
+        callback();
+    }
 
     // Initialize config
     initializeConfig(callback) {
@@ -101,7 +153,7 @@ class Main {
         });
     }
 
-    //Initialize Logger
+    //Initialize logger
     initializeLogger(callback) {
         let logOnStdOut = this.config.logger.stdout.enabled,
             self = this;
@@ -149,6 +201,86 @@ class Main {
         });
     }
 
+    //Load Service
+    loadServices(callback) {
+        //Inject all Singleton Services
+        let services = {};
+        try {
+            let list = fs.readdirSync(join(this.appBaseDir, 'services'));
+            list.forEach(item => {
+                if (item.search(/.js$/) !== -1) {
+                    let name = item.toString().replace(/\.js$/, '');
+                    console.log('[FRAMEWORK]'.bold.yellow, `Loading Service: '${name.bold}'`.magenta);
+                    services[name] = new (require(join(this.appBaseDir, 'services', name)).default);
+                }
+            });
+            this.addSafeReadOnlyGlobal('services', services);
+            callback();
+        } catch (err) {
+            callback(err);
+        }
+    }
+
+    initialiseSecurity(callback) {
+        // For Admin and API
+        new StatelessMiddleware(
+            this.app,
+            '_aapkaunadminssk',
+            this.config.session.generatorAlgo,
+            this.config.session.generatorSecret,
+            ''
+        );
+        // For SSP
+        new StatelessMiddleware(
+            this.app,
+            '_aapkaunsspssk',
+            this.config.session.generatorAlgo,
+            this.config.session.generatorSecret,
+            'SSP'
+        );
+        callback();
+    }
+
+    // Init routes
+    initialiseRoutes(callback) {
+        let router = express.Router();
+        try {
+            let list = fs.readdirSync(join(this.appBaseDir, 'controllers'));
+            list.forEach(item => {
+                if (item.search(/.js$/) !== -1) {
+                    let name = item.toString().replace(/\.js$/, '');
+                    console.log('[FRAMEWORK]'.bold.yellow, `Loading Controller Module: '${name.bold}'`.magenta);
+                    new (require(join(this.appBaseDir, 'controllers', item)).default)(router);
+                }
+            });
+            this.app.use('/', router);
+            callback();
+        } catch (err) {
+            callback(err);
+        }
+    }
+
+    // initPreRoutes(callback) {
+    //     this.app.use('/ssp', TenantParserMiddleware.handle);
+    //     this.app.use('/vault-connector', elFinder([
+    //         {
+    //             driver: elFinder.LocalFileStorage,
+    //             URL: "/vault-files/",       //Required
+    //             path: join(__dirname, 'vault_root'),   //Required
+    //             permissions: {read: 1, write: 1, lock: 0}
+    //         }
+    //     ]));
+    //     callback();
+    // }
+
+    // Execute Bootstrap
+    // bootstrapApp(callback) {
+    //     new Bootstrap(callback, this);
+    // }
+
+
+    // TODO initialise schedulers when Jobs are required
+
     // Init Schedulers
     // initJobSchedulers(callback) {
     //     let list = fs.readdirSync(join(this.appBaseDir, 'jobs'));
@@ -175,6 +307,32 @@ class Main {
     //         });
     //     });
     //     agenda.on('error', err => callback(new Error(err)));
+    // }
+
+    // Init Event Hooks
+    // initEventHooks(callback) {
+    //     let list = fs.readdirSync(join(this.appBaseDir, 'hooks'));
+    //     const emitter = new EventEmitter();
+    //     const hooks = {};
+    //     mapSeries(list, (item, callback) => {
+    //         if (item.search(/Hook.js$/) !== -1) {
+    //             let name = item.toString().replace(/Hook\.js$/, '');
+    //             const hook = require(join(this.appBaseDir, 'hooks', item.toString())).default;
+    //             console.log('[FRAMEWORK]'.bold.yellow, `Loading Hook: '${name.bold}'`.magenta);
+    //             hooks[name] = hook;
+    //             emitter.on(name, (...args) => hook.onEvent(...args));
+    //         }
+    //         callback();
+    //     }, err => {
+    //         if (err) return callback(err);
+    //         this.addSafeReadOnlyGlobal('_appEvent', {
+    //             emit: (name, ...args) => {
+    //                 if (hooks[name]) emitter.emit(name, ...args);
+    //                 else log.error('No Event hook with name:', name);
+    //             }
+    //         });
+    //         callback();
+    //     });
     // }
 
 
@@ -245,6 +403,24 @@ class Main {
     //     }
     //     next();
     // }
+
+    //TODO understand sendOnlineEvent
+
+    // sendOnlineEvent(callback) {
+    //     if (process.send) {
+    //         process.send({
+    //             type: "server-running",
+    //             pid: process.pid,
+    //             env: this.appEnv,
+    //             port: _config.port,
+    //             url: _config.serverUrl,
+    //             file: process.argv[1],
+    //             node: process.argv[0],
+    //             workerId: 'xxxxx-xxxxxx'.replace(/x/g, a => (~~(Math.random() * 16)).toString(16))
+    //         });
+    //     }
+    // }
+
 
 }
 
