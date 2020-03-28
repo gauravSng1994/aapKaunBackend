@@ -15,7 +15,7 @@ class Connection {
         let db = mongoose.connection;
         db.on('error',callback);
         db.once('open', ()=>{
-            log.infor('Connected to Mongodb!');
+            console.log('Connected to Mongodb!'); //TODO replace console.log with log.info
             Connection._connections[this.mongoUrl] = db;
             mongoose.plugin(DataTable.init);
             callback(null,Connection._connections[this.mongoUrl], mongoose);
