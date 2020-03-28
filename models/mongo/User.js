@@ -2,7 +2,7 @@
  * User model
  * */
 
-import MongoDbModel from '../../bootloader/mongo';
+import MongoDbModel from '../../bootloader/mongo/MongoDbModel';
 import bcrypt from 'bcrypt-nodejs';
 
 export default class User extends MongoDbModel {

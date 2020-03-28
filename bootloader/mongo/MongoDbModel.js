@@ -40,7 +40,7 @@ class MongoDbModel {
             (this.Indexes || []).forEach(index => {
                 schema.index(index);
             });
-            model.ensureIndexes();
+            model.createIndexes();
 
             callback(null, model);
         });

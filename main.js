@@ -7,12 +7,12 @@ import {join} from 'path';
 import cookieParser from 'cookie-parser';
 import fs from 'fs';
 import http from 'http';
+import {EventEmitter} from 'events';
 
 
 //importing custom modules
 import ConfigManager from './bootloader/configManager/ConfigManager';
-import Bootstrap from './conf/Bootstrap';
-import Logger from './bootloader/Logger';
+import Logger from './bootloader/logger/Logger';
 import StatelessMiddleware from './bootloader/security/StatelessMiddleware';
 
 class Main {
@@ -38,10 +38,10 @@ class Main {
             // this.initPreRoutes.bind(this),
             this.initialiseRoutes.bind(this),
             // this.bootstrapApp.bind(this),
-            // this.initEventHooks.bind(this),
+            this.initEventHooks.bind(this),
             // this.initJobSchedulers.bind(this),
             this.startServer.bind(this),
-            // this.sendOnlineEvent.bind(this)
+            this.sendOnlineEvent.bind(this)
         ], callback);
 
     }
@@ -310,30 +310,30 @@ class Main {
     // }
 
     // Init Event Hooks
-    // initEventHooks(callback) {
-    //     let list = fs.readdirSync(join(this.appBaseDir, 'hooks'));
-    //     const emitter = new EventEmitter();
-    //     const hooks = {};
-    //     mapSeries(list, (item, callback) => {
-    //         if (item.search(/Hook.js$/) !== -1) {
-    //             let name = item.toString().replace(/Hook\.js$/, '');
-    //             const hook = require(join(this.appBaseDir, 'hooks', item.toString())).default;
-    //             console.log('[FRAMEWORK]'.bold.yellow, `Loading Hook: '${name.bold}'`.magenta);
-    //             hooks[name] = hook;
-    //             emitter.on(name, (...args) => hook.onEvent(...args));
-    //         }
-    //         callback();
-    //     }, err => {
-    //         if (err) return callback(err);
-    //         this.addSafeReadOnlyGlobal('_appEvent', {
-    //             emit: (name, ...args) => {
-    //                 if (hooks[name]) emitter.emit(name, ...args);
-    //                 else log.error('No Event hook with name:', name);
-    //             }
-    //         });
-    //         callback();
-    //     });
-    // }
+    initEventHooks(callback) {
+        let list = fs.readdirSync(join(this.appBaseDir, 'hooks'));
+        const emitter = new EventEmitter();
+        const hooks = {};
+        mapSeries(list, (item, callback) => {
+            if (item.search(/Hook.js$/) !== -1) {
+                let name = item.toString().replace(/Hook\.js$/, '');
+                const hook = require(join(this.appBaseDir, 'hooks', item.toString())).default;
+                console.log('[FRAMEWORK]'.bold.yellow, `Loading Hook: '${name.bold}'`.magenta);
+                hooks[name] = hook;
+                emitter.on(name, (...args) => hook.onEvent(...args));
+            }
+            callback();
+        }, err => {
+            if (err) return callback(err);
+            this.addSafeReadOnlyGlobal('_appEvent', {
+                emit: (name, ...args) => {
+                    if (hooks[name]) emitter.emit(name, ...args);
+                    else log.error('No Event hook with name:', name);
+                }
+            });
+            callback();
+        });
+    }
 
 
     // Handle MultiTenancy beforehand
@@ -406,20 +406,20 @@ class Main {
 
     //TODO understand sendOnlineEvent
 
-    // sendOnlineEvent(callback) {
-    //     if (process.send) {
-    //         process.send({
-    //             type: "server-running",
-    //             pid: process.pid,
-    //             env: this.appEnv,
-    //             port: _config.port,
-    //             url: _config.serverUrl,
-    //             file: process.argv[1],
-    //             node: process.argv[0],
-    //             workerId: 'xxxxx-xxxxxx'.replace(/x/g, a => (~~(Math.random() * 16)).toString(16))
-    //         });
-    //     }
-    // }
+    sendOnlineEvent(callback) {
+        if (process.send) {
+            process.send({
+                type: "server-running",
+                pid: process.pid,
+                env: this.appEnv,
+                port: _config.port,
+                url: _config.serverUrl,
+                file: process.argv[1],
+                node: process.argv[0],
+                workerId: 'xxxxx-xxxxxx'.replace(/x/g, a => (~~(Math.random() * 16)).toString(16))
+            });
+        }
+    }
 
 
 }

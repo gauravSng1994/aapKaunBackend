@@ -1,5 +1,8 @@
-// require("babel-register");
+require("babel-register");
+require("babel-core/register");
+require("babel-polyfill");
 require("colors");
+require('autostrip-json-comments');
 
 //setup for getting environment variables
 const dotEnv = require('dotenv');
@@ -12,7 +15,7 @@ console.log("[FRAMEWORK]".bold.yellow, "Loading Main Module...".green);
 // Load main
 const Main = require('./main.js').default;
 
-// new Main(err => console.log("[FRAMEWORK]".bold.yellow, "App initialized!".green, 'Reported Errors:'.red, err));
+new Main(err => console.log("[FRAMEWORK]".bold.yellow, "App initialized!".green, 'Reported Errors:'.red, err));
 
 
 

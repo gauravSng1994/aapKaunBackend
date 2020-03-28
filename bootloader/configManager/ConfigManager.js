@@ -4,8 +4,8 @@ import traverse from 'traverse';
 
 class ConfigManager {
     constructor(options, callback) {
-        let appConfigRaw = require(join(options.appBaseDir, 'conf/AppConfig.json')),
-            configRaw = require(join(options.appBaseDir, 'conf/Config.json'));
+        let appConfigRaw = require(join(options.appBaseDir, 'config/AppConfig.json')),
+            configRaw = require(join(options.appBaseDir, 'config/Config.json'));
         options.postProcess = options.postProcess || function (config) {
             return config;
         };
